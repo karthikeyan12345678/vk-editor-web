@@ -1,0 +1,25 @@
+name: Tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Type-check and build the website
+        working-directory: frontend
+        run: |
+          npm install
+          npx tsc --noEmit
+          npm run build:web
+      - name: Type-check the assistant
+        working-directory: assistant-ui
+        run: npx tsc --noEmit
+      - name: Make sure no key or token is in the built site
+        run: |
+          if grep -rEI "(sk-[A-Za-z0-9]{20,}|hf_[A-Za-z0-9]{30,}|gsk_[A-Za-z0-9]{30,}|AIza[0-9A-Za-z_-]{35})" frontend/dist-web; then echo "::error::secret-looking text found"; exit 1; fi
