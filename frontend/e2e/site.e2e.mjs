@@ -83,7 +83,7 @@ try {
 
   step("5. Text to video");
   await nav("Make video");
-  await page.getByRole("tab", { name: "Text" }).click();
+  await page.getByRole("tab", { name: "Create" }).click();
   await page.locator("textarea").first().fill("A lighthouse on a cliff at dawn");
   await page.getByRole("button", { name: "Generate" }).click();
   await page.getByRole("button", { name: "Edit this video" }).waitFor({ timeout: 60000 });
@@ -94,8 +94,7 @@ try {
   await shot("05-text-video");
 
   step("6. Picture to video");
-  await page.getByRole("tab", { name: "Picture" }).click();
-  await page.locator(".slot input[type=file]").first().setInputFiles(files.image);
+  await page.locator(".frames .slot input[type=file]").first().setInputFiles(files.image);
   await page.waitForSelector(".slot-filled", { timeout: 20000 });
   await page.locator("textarea").first().fill("The red square slowly zooms in");
   await page.getByRole("button", { name: "Generate" }).click();
@@ -105,8 +104,24 @@ try {
   ok(JSON.stringify(call?.data).includes("gradio"), "the start picture was uploaded to the Space");
   await shot("06-picture-video");
 
+  step("6b. Start and end picture");
+  ok(await page.locator(".frames .slot").count() === 2, "Start and End slots are shown");
+  await page.locator(".frames .slot input[type=file]").nth(1).setInputFiles(files.image);
+  await page.waitForFunction(() => document.querySelectorAll(".frames .slot-filled").length === 2, null, { timeout: 20000 });
+  await page.locator("textarea").first().fill("It turns into a blue square");
+  await page.getByRole("button", { name: "Generate" }).click();
+  await page.getByRole("button", { name: "Edit this video" }).waitFor({ timeout: 60000 });
+  call = state.spaceCalls.at(-1);
+  ok(call?.api === "generate_video" && call.space === "flf", "start+end sends generate_video to the first/last-frame Space", JSON.stringify(call)?.slice(0, 200));
+  ok(JSON.stringify(call?.data).split("gradio").length >= 3, "both pictures were uploaded");
+  await shot("06b-start-end");
+  await page.getByRole("button", { name: "Swap the start and end pictures" }).click();
+  ok(await page.locator(".frames .slot-filled").count() === 2, "swap keeps both pictures");
+  await page.locator(".frames .slot-x").nth(1).click();
+  await page.locator(".frames .slot-x").first().click();
+
   step("7. Continue a clip");
-  await page.getByRole("tab", { name: "Continue" }).click();
+  await page.getByRole("tab", { name: "Continue a clip" }).click();
   await page.getByRole("button", { name: "From library" }).first().click();
   await page.locator(".slot-pop button, .slot-pop .pick, .slot-pop [role=option]").first().click().catch(async () => { await page.locator(".slot-pop *").filter({ hasText: /Text to video/ }).first().click(); });
   await page.waitForSelector(".slot-filled", { timeout: 20000 });
@@ -119,7 +134,7 @@ try {
 
   step("8. Quota message");
   state.quotaError = true;
-  await page.getByRole("tab", { name: "Text" }).click();
+  await page.getByRole("tab", { name: "Create" }).click();
   await page.locator("textarea").first().fill("Another try");
   await page.getByRole("button", { name: "Generate" }).click();
   await waitText("used up for now", 30000);

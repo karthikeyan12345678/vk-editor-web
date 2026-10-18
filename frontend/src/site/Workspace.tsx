@@ -29,9 +29,11 @@ function Shell({ view, setView }: { view: View; setView: (v: View) => void }) {
   const [queue, setQueue] = useState<Asset[]>([]);
   const [visited, setVisited] = useState<Set<View>>(new Set([view]));
   const [over, setOver] = useState(false);
+  const [menu, setMenu] = useState(false); // phone and tablet: the menu opens as a drop-down
   const me = currentProfile();
-  const goTo = (v: View) => { setVisited((s) => new Set(s).add(v)); setView(v); };
+  const goTo = (v: View) => { setVisited((s) => new Set(s).add(v)); setView(v); setMenu(false); };
   useEffect(() => { setVisited((s) => (s.has(view) ? s : new Set(s).add(view))); }, [view]);
+  useEffect(() => { if (!menu) return; const k = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(false); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [menu]);
   const toEditor = (a: Asset) => { setQueue((q) => [...q, a]); goTo("editor"); };
 
   useEffect(() => {
@@ -54,18 +56,26 @@ function Shell({ view, setView }: { view: View; setView: (v: View) => void }) {
   if (!ready) return <div className="center-screen" role="status">{connectionLost ? "The browser storage is not available. Allow site data for this page (or leave private mode) and reload." : <><span className="spinner" /><span>Starting…</span></>}</div>;
   const shownJobs = jobs.filter((j) => j.status === "queued" || j.status === "running").slice(0, 4);
   return (
-    <div className="shell shell--web">
+    <div className={`shell shell--web${menu ? " shell--menu" : ""}`}>
       <nav className="nav" aria-label="Main">
-        <a className="brand" href="#/" title="Back to the home page"><img src="logo.png" alt="" width={28} height={28} style={{ borderRadius: 7 }} /><span className="w-semibold">{config().siteName}</span></a>
-        <ul>
-          {NAV.map((n) => <li key={n.id}><button type="button" className="nav-item" aria-current={view === n.id ? "page" : undefined} onClick={() => goTo(n.id)}><Icon d={n.icon} />{n.label}</button></li>)}
-          <li><button type="button" className="nav-item" aria-current={view === "help" ? "page" : undefined} onClick={() => goTo("help")}><Icon d={I.alert} />Help</button></li>
-        </ul>
-        <div className="nav-jobs stack gap" aria-label="Running tasks">{shownJobs.map((j) => <JobCard key={j.id} job={j} />)}</div>
-        <button type="button" className="nav-account" onClick={() => goTo("settings")} title="Account and settings">
-          {me?.picture ? <img className="avatar avatar--sm" src={me.picture} alt="" width={28} height={28} referrerPolicy="no-referrer" /> : <span className="avatar avatar--sm avatar--blank" aria-hidden="true">{(me?.name ?? "G").slice(0, 1)}</span>}
-          <span className="stack"><b className="text-sm truncate">{me?.name ?? "Guest"}</b><span className="text-xs muted truncate">{me?.guest ? "Guest mode" : me?.email}</span></span>
+        <button type="button" className="nav-toggle" aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu} aria-controls="main-menu" onClick={() => setMenu(!menu)}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
+        <a className="brand" href="#/" title="Back to the home page"><img src="logo.png" alt="" width={28} height={28} style={{ borderRadius: 7 }} /><span className="w-semibold">{config().siteName}</span></a>
+        <span className="nav-here" aria-hidden="true">{view === "help" ? "Help" : NAV.find((n) => n.id === view)?.label}</span>
+        {menu && <div className="nav-scrim" onClick={() => setMenu(false)} aria-hidden="true" />}
+        <div className="nav-menu" id="main-menu">
+          <div className="nav-menu-head"><b>Menu</b><button type="button" className="nav-close" aria-label="Close menu" onClick={() => setMenu(false)}>✕</button></div>
+          <ul>
+            {NAV.map((n) => <li key={n.id}><button type="button" className="nav-item" aria-current={view === n.id ? "page" : undefined} onClick={() => goTo(n.id)}><Icon d={n.icon} />{n.label}</button></li>)}
+            <li><button type="button" className="nav-item" aria-current={view === "help" ? "page" : undefined} onClick={() => goTo("help")}><Icon d={I.alert} />Help</button></li>
+          </ul>
+          <div className="nav-jobs stack gap" aria-label="Running tasks">{shownJobs.map((j) => <JobCard key={j.id} job={j} />)}</div>
+          <button type="button" className="nav-account" onClick={() => goTo("settings")} title="Account and settings">
+            {me?.picture ? <img className="avatar avatar--sm" src={me.picture} alt="" width={28} height={28} referrerPolicy="no-referrer" /> : <span className="avatar avatar--sm avatar--blank" aria-hidden="true">{(me?.name ?? "G").slice(0, 1)}</span>}
+            <span className="stack"><b className="text-sm truncate">{me?.name ?? "Guest"}</b><span className="text-xs muted truncate">{me?.guest ? "Guest mode" : me?.email}</span></span>
+          </button>
+        </div>
       </nav>
       <div className="content">
         {connectionLost && <p className="banner" role="alert"><Icon d={I.alert} size={14} /> The browser storage stopped answering. Reload the page.</p>}

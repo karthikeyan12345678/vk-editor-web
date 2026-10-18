@@ -49,6 +49,7 @@ function gradioConfig(root, apis) {
 
 const LTX = { text_to_video: ["prompt", "negative_prompt", "input_image_filepath", "input_video_filepath", "height_ui", "width_ui", "mode", "duration_ui", "ui_frames_to_use", "seed_ui", "randomize_seed", "ui_guidance_scale", "improve_texture_flag"],
   image_to_video: ["prompt", "negative_prompt", "input_image_filepath", "input_video_filepath", "height_ui", "width_ui", "mode", "duration_ui", "ui_frames_to_use", "seed_ui", "randomize_seed", "ui_guidance_scale", "improve_texture_flag"] };
+const FLF = { generate_video: ["start_image_pil", "end_image_pil", "prompt", "negative_prompt", "duration_seconds", "steps", "guidance_scale", "guidance_scale_2", "seed", "randomize_seed"] };
 const ANIM = { animate_scene: ["input_video", "max_duration_s", "edited_frame", "rc_str", "resolution_choice"] };
 
 /** @param {import('playwright').BrowserContext} ctx */
@@ -77,15 +78,15 @@ export async function installMocks(ctx, opts = {}) {
     return json(r, { id: "drivefile1" });
   });
   // ---- Hugging Face Spaces (Gradio protocol)
-  const hosts = { "ltx": ["Lightricks/ltx-video-distilled", LTX], "anim": ["alexnasa/Wan2.2-Animate-ZEROGPU", ANIM] };
+  const hosts = { "ltx": ["Lightricks/ltx-video-distilled", LTX], "anim": ["alexnasa/Wan2.2-Animate-ZEROGPU", ANIM], "flf": ["multimodalart/wan-2-2-first-last-frame", FLF] };
   for (const [sub, [id]] of Object.entries(hosts)) {
     await ctx.route(`https://huggingface.co/api/spaces/${id}/host`, (r) => json(r, { host: `https://${sub}.hf.space`, subdomain: sub }));
   }
   await ctx.route(/https:\/\/huggingface\.co\/api\/spaces\/[^/]+\/[^/]+$/, (r) => json(r, { runtime: { stage: "RUNNING", hardware: { current: "zero-a10g" } } }));
   let sessions = {};
-  await ctx.route(/https:\/\/(ltx|anim)\.hf\.space\/.*/, async (r) => {
+  await ctx.route(/https:\/\/(ltx|anim|flf)\.hf\.space\/.*/, async (r) => {
     const u = new URL(r.request().url()), sub = u.hostname.split(".")[0], root = `https://${sub}.hf.space`;
-    const apis = sub === "ltx" ? LTX : ANIM, { cfg, info } = gradioConfig(root, apis);
+    const apis = sub === "ltx" ? LTX : sub === "flf" ? FLF : ANIM, { cfg, info } = gradioConfig(root, apis);
     if (r.request().method() === "OPTIONS") return r.fulfill({ status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "*" } });
     if (u.pathname === "/config") return json(r, cfg);
     if (u.pathname === "/gradio_api/info" || u.pathname === "/info") return json(r, info);
@@ -102,7 +103,7 @@ export async function installMocks(ctx, opts = {}) {
         return r.fulfill({ status: 200, contentType: "text/event-stream", headers: { "access-control-allow-origin": "*" },
           body: ev({ msg: "process_completed", success: false, output: { error: "You have exceeded your GPU quota (60s requested vs. 12s left). Try again in 0:07:21" } }) });
       }
-      const out = sub === "ltx" ? [{ video: { path: "/tmp/gradio/r.webm", url: `${root}/gradio_api/file=/tmp/gradio/r.webm`, orig_name: "r.webm", meta: { _type: "gradio.FileData" } }, subtitles: null }, 1234]
+      const out = sub === "ltx" || sub === "flf" ? [{ video: { path: "/tmp/gradio/r.webm", url: `${root}/gradio_api/file=/tmp/gradio/r.webm`, orig_name: "r.webm", meta: { _type: "gradio.FileData" } }, subtitles: null }, 1234]
         : [{ video: { path: "/tmp/gradio/r.webm", url: `${root}/gradio_api/file=/tmp/gradio/r.webm`, orig_name: "r.webm", meta: { _type: "gradio.FileData" } }, subtitles: null }];
       return r.fulfill({ status: 200, contentType: "text/event-stream", headers: { "access-control-allow-origin": "*" },
         body: ev({ msg: "estimation", rank: 0, queue_size: 1, rank_eta: 1 }) + ev({ msg: "process_starts", eta: 2 }) + ev({ msg: "process_completed", success: true, output: { data: out }, title: null }) });

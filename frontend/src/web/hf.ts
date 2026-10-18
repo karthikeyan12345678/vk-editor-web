@@ -5,13 +5,13 @@
 import { Client, handle_file } from "@gradio/client";
 import { recordUse } from "../../../shared/web/quota";
 
-export const DEFAULT_SPACES = { ltx: "Lightricks/ltx-video-distilled", animate: "alexnasa/Wan2.2-Animate-ZEROGPU" } as const;
+export const DEFAULT_SPACES = { ltx: "Lightricks/ltx-video-distilled", animate: "alexnasa/Wan2.2-Animate-ZEROGPU", frames: "multimodalart/wan-2-2-first-last-frame" } as const;
 const KEY = "vk_hf_v1";
 
-export interface HFConfig { token: string; ltx: string; animate: string }
+export interface HFConfig { token: string; ltx: string; animate: string; frames: string }
 export function loadHF(): HFConfig {
-  try { const s = JSON.parse(localStorage.getItem(KEY) ?? "null"); if (s) return { token: s.token ?? "", ltx: s.ltx || DEFAULT_SPACES.ltx, animate: s.animate || DEFAULT_SPACES.animate }; } catch { /* ignore */ }
-  return { token: "", ltx: DEFAULT_SPACES.ltx, animate: DEFAULT_SPACES.animate };
+  try { const s = JSON.parse(localStorage.getItem(KEY) ?? "null"); if (s) return { token: s.token ?? "", ltx: s.ltx || DEFAULT_SPACES.ltx, animate: s.animate || DEFAULT_SPACES.animate, frames: s.frames || DEFAULT_SPACES.frames }; } catch { /* ignore */ }
+  return { token: "", ltx: DEFAULT_SPACES.ltx, animate: DEFAULT_SPACES.animate, frames: DEFAULT_SPACES.frames };
 }
 export function saveHF(patch: Partial<HFConfig>): HFConfig {
   const c = { ...loadHF(), ...patch };

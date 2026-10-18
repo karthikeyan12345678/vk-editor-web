@@ -15,10 +15,10 @@ function GpuSettings() {
   const [c, setC] = useState(loadHF());
   const [token, setToken] = useState("");
   const [msg, setMsg] = useState("");
-  const [st, setSt] = useState<{ ltx: { text: string; ok: boolean }; animate: { text: string; ok: boolean } } | null>(null);
+  const [st, setSt] = useState<{ ltx: { text: string; ok: boolean }; animate: { text: string; ok: boolean }; frames: { text: string; ok: boolean } } | null>(null);
   const [busy, setBusy] = useState(false);
   const save = () => {
-    const n = saveHF({ ...(token.trim() ? { token: token.trim() } : {}), ltx: c.ltx.trim() || DEFAULT_SPACES.ltx, animate: c.animate.trim() || DEFAULT_SPACES.animate });
+    const n = saveHF({ ...(token.trim() ? { token: token.trim() } : {}), ltx: c.ltx.trim() || DEFAULT_SPACES.ltx, animate: c.animate.trim() || DEFAULT_SPACES.animate, frames: (c.frames ?? "").trim() || DEFAULT_SPACES.frames });
     setC(n); setToken(""); setMsg("Saved in this browser.");
   };
   const check = async () => { setBusy(true); try { setSt(await webCall("GET", "/web/hf/status")); } finally { setBusy(false); } };
@@ -37,12 +37,13 @@ function GpuSettings() {
         <details><summary className="text-sm">Choose other Spaces (advanced)</summary>
           <div className="stack gap" style={{ marginTop: 8 }}>
             <label className="field"><span>Text, picture and continue (LTX video)</span><input className="input" value={c.ltx} onChange={(e) => setC({ ...c, ltx: e.target.value })} placeholder={DEFAULT_SPACES.ltx} /></label>
+            <label className="field"><span>Start and end picture (Wan 2.2 first and last frame)</span><input className="input" value={c.frames ?? ""} onChange={(e) => setC({ ...c, frames: e.target.value })} placeholder={DEFAULT_SPACES.frames} /></label>
             <label className="field"><span>Motion control (Wan 2.2 Animate)</span><input className="input" value={c.animate} onChange={(e) => setC({ ...c, animate: e.target.value })} placeholder={DEFAULT_SPACES.animate} /></label>
             <p className="text-xs muted">Spaces are run by other people and can be paused or changed. If one stops working, paste another with the same inputs here (a duplicate of the Space on your own free account works too).</p>
           </div></details>
         {msg && <p className="text-sm" role="status">{msg}</p>}
         <div className="row gap wrap"><Button onClick={save}>Save</Button><Button variant="secondary" busy={busy} onClick={() => void check()}>Check the Spaces are awake</Button></div>
-        {st && <ul className="text-sm"><li><b>Video:</b> {st.ltx.text}</li><li><b>Motion control:</b> {st.animate.text}</li></ul>}
+        {st && <ul className="text-sm"><li><b>Video:</b> {st.ltx.text}</li><li><b>Start and end picture:</b> {st.frames.text}</li><li><b>Motion control:</b> {st.animate.text}</li></ul>}
       </div>
       <div className="card stack gap"><h2>Free GPU time (estimate)</h2><QuotaMeter provider="zerogpu" editable /><p className="text-xs muted">Counted from the jobs this browser sent. The real balance is on <a href="https://huggingface.co/settings/billing" target="_blank" rel="noreferrer">your Hugging Face billing page</a>.</p></div>
     </div>

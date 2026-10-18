@@ -33,7 +33,20 @@ export async function lastFrame(blob: Blob): Promise<Blob> {
   } finally { URL.revokeObjectURL(url); }
 }
 
-export interface VideoBody { mode: "t2v" | "i2v" | "extend"; prompt: string; negative?: string; aspect: string; quality: "fast" | "good"; seconds: number; seed?: number | null; image_asset_id?: string; source_asset_id?: string }
+export interface VideoBody { mode: "t2v" | "i2v" | "frames" | "extend"; prompt: string; negative?: string; aspect: string; quality: "fast" | "good"; seconds: number; seed?: number | null; image_asset_id?: string; end_asset_id?: string; source_asset_id?: string }
+
+/** Crops a picture to the chosen video shape (centre crop) and returns it as a PNG, so the first and last picture match. */
+export async function coverTo(blob: Blob, w: number, h: number): Promise<Blob> {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image(); img.src = url;
+    await img.decode().catch(() => { throw new ApiError("The browser could not read that picture. Use a JPG, PNG or WebP.", 422); });
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    const k = Math.max(w / img.naturalWidth, h / img.naturalHeight), sw = w / k, sh = h / k;
+    c.getContext("2d")!.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, 0, 0, w, h);
+    return await new Promise<Blob>((res, rej) => c.toBlob((o) => (o ? res(o) : rej(new ApiError("The picture could not be prepared.", 422))), "image/png"));
+  } finally { URL.revokeObjectURL(url); }
+}
 
 /** Text to video, picture to video, and "continue this clip" (the clip's last picture starts the next one). */
 export async function makeVideo(h: Helpers, b: VideoBody): Promise<Made> {
@@ -43,6 +56,27 @@ export async function makeVideo(h: Helpers, b: VideoBody): Promise<Made> {
   const width = snap(w0), height = snap(h0);
   const seconds = Math.max(0.5, Math.min(8, Number(b.seconds) || 2));
   let image: File | null = null;
+  if (b.mode === "frames") {
+    // start picture + end picture: the video moves from one to the other (Wan 2.2 first/last frame)
+    const sa = await h.mustAsset(b.image_asset_id ?? ""), ea = await h.mustAsset(b.end_asset_id ?? "");
+    const sb = await h.blobOf(sa.id), eb = await h.blobOf(ea.id);
+    if (sa.kind !== "image" || !sb) throw new ApiError("Choose a picture for the start.", 422);
+    if (ea.kind !== "image" || !eb) throw new ApiError("Choose a picture for the end.", 422);
+    h.stage({ phase: "Preparing the start and end pictures", fraction: 0.01 });
+    const secs = Math.max(0.6, Math.min(5, Number(b.seconds) || 3));
+    const payload = {
+      start_image_pil: handle_file(fileFor(await coverTo(sb, width, height), "start.png")),
+      end_image_pil: handle_file(fileFor(await coverTo(eb, width, height), "end.png")),
+      prompt: b.prompt.trim() || "Smooth natural motion from the first picture to the last picture",
+      negative_prompt: (b.negative ?? "").trim() || "blurry, distorted, jittery, low quality, static",
+      duration_seconds: secs, steps: b.quality === "good" ? 12 : 8, guidance_scale: 1, guidance_scale_2: 1,
+      seed: b.seed != null && Number.isFinite(b.seed) ? Math.round(b.seed) : 42,
+      randomize_seed: !(b.seed != null && Number.isFinite(b.seed)),
+    };
+    const r = await runSpace({ space: cfg.frames, endpoint: "/generate_video", params: ["start_image_pil", "end_image_pil", "prompt", "duration_seconds"], payload, onStage: h.stage, signal: h.signal });
+    const seed = Array.isArray(r.data) && typeof r.data[1] === "number" ? r.data[1] : null;
+    return { blob: r.blob, name: `Start to end - ${b.prompt.trim().slice(0, 36) || "clip"}.mp4`, meta: { prompt: b.prompt.trim(), seed, width, height, seconds: secs, space: cfg.frames, mode: "frames", gpu_seconds: r.seconds } };
+  }
   if (b.mode === "i2v") {
     const a = await h.mustAsset(b.image_asset_id ?? "");
     const blob = await h.blobOf(a.id);

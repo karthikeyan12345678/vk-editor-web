@@ -20,7 +20,7 @@ Sign in with Google (or use guest mode), then:
 | Page | What it does |
 | --- | --- |
 | **Home** | Your old projects, a **New project** button, and a history of everything you made |
-| **Make video** | Text to video, picture to video, continue a clip (free Hugging Face GPU) |
+| **Make video** | Text to video, picture to video, start + end picture, continue a clip (free Hugging Face GPU) |
 | **Motion control** | A character picture copies the moves of a video (Pose Retarget or Character Swap) |
 | **Editor** | Timeline, 51 looks, 34 effects, 59 transitions, 38 sounds, layers, green screen, keyframes, chat editing, MP4 / WebM / GIF export |
 | **AI Assistant** | Chat, PDF / PowerPoint / Word / Excel / CSV files, resume check and tailoring, compare, analyse data, pictures |

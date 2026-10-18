@@ -11,7 +11,8 @@ export default function Tour({ steps, onDone }: { steps: TourStep[]; onDone: () 
   useEffect(() => {
     const measure = () => {
       const el = step.target ? document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`) : null;
-      setRect(el ? el.getBoundingClientRect() : null);
+      const r = el ? el.getBoundingClientRect() : null;
+      setRect(r && r.width > 0 && r.height > 0 ? r : null); // a hidden target (phone menu closed) shows the centred card instead
     };
     const t = setTimeout(measure, 60);
     window.addEventListener("resize", measure);

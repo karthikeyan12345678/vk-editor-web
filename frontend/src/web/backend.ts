@@ -379,9 +379,9 @@ export async function webCall(method: string, path: string, body?: any, form?: F
     void runGen(job, "motion", (h) => motionControl(h, body));
     return job;
   }
-  if (is("GET", /^\/web\/hf$/)) { const c = loadHF(); return { has_token: !!c.token, ltx: c.ltx, animate: c.animate }; }
-  if (is("PUT", /^\/web\/hf$/)) { const c = saveHF({ ...(body.token !== undefined ? { token: String(body.token).trim() } : {}), ...(body.ltx ? { ltx: String(body.ltx).trim() } : {}), ...(body.animate ? { animate: String(body.animate).trim() } : {}) }); return { has_token: !!c.token, ltx: c.ltx, animate: c.animate }; }
-  if (is("GET", /^\/web\/hf\/status$/)) { const c = loadHF(); const [a, b] = await Promise.all([spaceStatus(c.ltx), spaceStatus(c.animate)]); return { ltx: a, animate: b }; }
+  if (is("GET", /^\/web\/hf$/)) { const c = loadHF(); return { has_token: !!c.token, ltx: c.ltx, animate: c.animate, frames: c.frames }; }
+  if (is("PUT", /^\/web\/hf$/)) { const c = saveHF({ ...(body.token !== undefined ? { token: String(body.token).trim() } : {}), ...(body.ltx ? { ltx: String(body.ltx).trim() } : {}), ...(body.animate ? { animate: String(body.animate).trim() } : {}), ...(body.frames ? { frames: String(body.frames).trim() } : {}) }); return { has_token: !!c.token, ltx: c.ltx, animate: c.animate, frames: c.frames }; }
+  if (is("GET", /^\/web\/hf\/status$/)) { const c = loadHF(); const [a, b, f] = await Promise.all([spaceStatus(c.ltx), spaceStatus(c.animate), spaceStatus(c.frames)]); return { ltx: a, animate: b, frames: f }; }
 
   if (is("POST", /^\/editor\/chat$/)) return chatTurn(body);
   if (is("GET", /^\/editor\/chat\/status$/)) {

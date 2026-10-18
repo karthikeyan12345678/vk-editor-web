@@ -34,6 +34,9 @@ export default function App() {
   const [convs, setConvs] = useState<Conversation[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const [menu, setMenu] = useState(false); // phone and tablet: the side list opens as a drop-down
+  useEffect(() => { if (!menu) return; const k = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(false); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [menu]);
+  const pick = (v: View) => { setView(v); setMenu(false); };
   const [confirm, setConfirm] = useState<string | null>(null);
 
   const refresh = useCallback(() => { api.conversations().then(setConvs).catch((e) => setErr(errText(e))); }, []);
@@ -46,22 +49,25 @@ export default function App() {
   return (
     <div className="shell">
       {tour && <Tour steps={STEPS} onDone={finishTour} />}
-      <aside className="side" aria-label="Main">
+      <aside className={`side${menu ? " side--open" : ""}`} aria-label="Main">
+        <button type="button" className="menu-btn" aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu} aria-controls="side-menu" onClick={() => setMenu(!menu)}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg></button>
         <div className="brand"><span className="logo" aria-hidden="true"><Ico name="spark" size={20} /></span><strong>AI Assistant</strong></div>
-        <button type="button" className="newchat" onClick={() => { setCurrent(null); setView("chat"); }}><Ico name="plus" size={18} />New chat</button>
-        <nav className="nav" aria-label="Tools">
-          <button className="nav-item" data-tour="chat" aria-current={view === "chat" ? "page" : undefined} onClick={() => setView("chat")}><Ico name="chat" />Chat</button>
-          {NAV.map((n) => (<button key={n.id} className="nav-item" data-tour={n.id} aria-current={view === n.id ? "page" : undefined} onClick={() => setView(n.id)}><Ico name={n.icon} />{n.label}</button>))}
+        <button type="button" className="newchat" onClick={() => { setCurrent(null); setView("chat"); setMenu(false); }}><Ico name="plus" size={18} /><span>New chat</span></button>
+        {menu && <div className="side-scrim" onClick={() => setMenu(false)} aria-hidden="true" />}
+        <div className="side-menu" id="side-menu"><div className="side-menu-head"><strong>Menu</strong><button type="button" className="menu-close" aria-label="Close menu" onClick={() => setMenu(false)}>✕</button></div><nav className="nav" aria-label="Tools">
+          <button className="nav-item" data-tour="chat" aria-current={view === "chat" ? "page" : undefined} onClick={() => pick("chat")}><Ico name="chat" />Chat</button>
+          {NAV.map((n) => (<button key={n.id} className="nav-item" data-tour={n.id} aria-current={view === n.id ? "page" : undefined} onClick={() => pick(n.id)}><Ico name={n.icon} />{n.label}</button>))}
         </nav>
         <div className="side-title">Recents</div>
         <div className="convs">
           {convs.length === 0 && <p className="hint" style={{ padding: "0 12px" }}>No chats yet.</p>}
           {convs.map((c) => (
             <div key={c.id} className="conv" data-active={current === c.id && view === "chat"}>
-              <button className="conv-main truncate" onClick={() => { setCurrent(c.id); setView("chat"); }} title={c.title}>{c.title}</button>
+              <button className="conv-main truncate" onClick={() => { setCurrent(c.id); setView("chat"); setMenu(false); }} title={c.title}>{c.title}</button>
               {confirm === c.id ? (<><button className="btn btn--sm btn--danger" onClick={() => void remove(c.id)}>Delete</button><button className="btn btn--sm btn--ghost" onClick={() => setConfirm(null)}>Keep</button></>)
                 : <button className="conv-del" aria-label={`Delete chat ${c.title}`} onClick={() => setConfirm(c.id)}><Ico name="x" size={14} /></button>}
             </div>))}
+        </div>
         </div>
         {err && <p className="hint" role="alert">{err}</p>}
       </aside>

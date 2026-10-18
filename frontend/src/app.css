@@ -559,3 +559,24 @@
 @media (max-width: 900px) { .web-top { overflow-x: auto; white-space: nowrap; } .web-top > .text-xs { display: none; } .web-top .brand { margin-right: 4px; } .fx-top { gap: 4px; padding: 6px 8px; } .fx-title { min-width: 90px; font-size: var(--text-md, 15px); } .fx-save { display: none; } }
 @media (max-width: 760px) { .web-shell { height: 100dvh; } .editor.fx { overflow-y: auto; } .fx-center .stage { max-height: 38vh; } .timeline { height: 220px; flex: none; } }
 @media (max-width: 760px) { .fx-center { overflow: visible; flex: none; } .fx-center .stage { flex: none; height: 30vh; width: auto; max-width: 100%; max-height: none; } .fx-lib { max-height: 30vh; } .fx-main { flex: none; } }
+
+/* ---- start / end picture slots (Make video) ---- */
+.frames { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: center; }
+.frames .slot-filled { flex-direction: column; gap: 8px; }
+.frames .slot-media { width: 100%; }
+.frames .slot-media .thumb, .frames .slot-media video { height: 96px; }
+.frames .slot-empty { min-height: 112px; padding: 10px 8px; }
+.swap { width: 36px; height: 36px; display: grid; place-items: center; font: inherit; font-size: 18px; color: inherit; background: var(--color-gray-2); border: 0; border-radius: 50%; cursor: pointer; }
+.swap:hover:not(:disabled) { background: var(--color-gray-3, var(--color-gray-2)); }
+.swap:disabled { opacity: .4; cursor: default; }
+.swap:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.frames .slot-btn { padding: 4px 10px; }
+.frames .slot-filled .row { flex-wrap: wrap; }
+.slot-btn { max-width: 100%; }
+
+/* picture / video slots: the two buttons never overflow a narrow box */
+.slot-empty .row { width: 100%; flex-direction: column; align-items: stretch; gap: 8px; }
+.slot-empty .slot-btn { width: 100%; min-height: 40px; justify-content: center; padding: 6px 12px; white-space: nowrap; }
+.slot-filled .row { flex-wrap: wrap; gap: 4px 12px; }
+.slot-link { min-height: 28px; }
+@media (pointer: coarse) { .btn, .gchip, .slot-btn, .nav-item { min-height: 44px; } }
