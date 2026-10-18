@@ -117,6 +117,32 @@ def accepted(fn, **kw):
     return {k: v for k, v in kw.items() if k in names}
 
 
+def default_budget(big_gpu: int, small_gpu: int) -> int:
+    """width*height*frames the GPU can hold. A free 15 GB T4 gets a small budget on purpose (attention memory grows very fast)."""
+    env = os.environ.get("VK_BUDGET")
+    if env:
+        return int(env)
+    return big_gpu if vram_gb() >= 40 else small_gpu
+
+
+def run_with_retry(make_call, width, height, frames, budget, tries=4):
+    """Runs make_call(w, h); when the GPU runs out of memory it shrinks the picture and tries again instead of failing."""
+    import torch
+    last = None
+    for attempt in range(tries):
+        w, h = fit(width, height, frames, budget)
+        try:
+            return make_call(w, h)
+        except torch.OutOfMemoryError as e:
+            last = e
+            log(f"GPU out of memory at {w}x{h}, {frames} frames: trying a smaller size ...")
+            free_gpu()
+            budget = int(budget * 0.55)
+            if w <= 256 and h <= 256:
+                break
+    raise RuntimeError("The GPU is too small for this video. Try a shorter length or a smaller size.") from last
+
+
 def free_gpu():
     gc.collect()
     try:
@@ -172,21 +198,24 @@ class LTX:
         from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
         self.load()
         big = vram_gb() >= 40
-        budget = int(os.environ.get("VK_BUDGET", 130_000_000 if big else 72_000_000))
+        budget = default_budget(130_000_000, 24_000_000)
         nf = frames_for(seconds, 8, 257 if big else 161)
-        w, h = fit(width, height, nf, budget)
         steps = 50 if quality == "good" else 30
-        conds = []
-        if start is not None:
-            conds.append(LTXVideoCondition(video=[to_pil_cover(start, w, h)], frame_index=0))
-        if end is not None:
-            conds.append(LTXVideoCondition(video=[to_pil_cover(end, w, h)], frame_index=nf - 1))
-        gen = torch.Generator(device="cpu").manual_seed(int(seed))
-        kw = accepted(self.pipe.__call__, conditions=conds or None, prompt=prompt, negative_prompt=negative or NEG_DEFAULT, width=w, height=h,
-                      num_frames=nf, num_inference_steps=steps, generator=gen, decode_timestep=0.05, decode_noise_scale=0.025,
-                      callback_on_step_end=step_callback(progress, steps, "Making it") if progress else None, output_type="pil")
-        log(f"LTX {w}x{h}, {nf} frames, {steps} steps, start={start is not None}, end={end is not None}")
-        frames = self.pipe(**kw).frames[0]
+
+        def call(w, h):
+            conds = []
+            if start is not None:
+                conds.append(LTXVideoCondition(video=[to_pil_cover(start, w, h)], frame_index=0))
+            if end is not None:
+                conds.append(LTXVideoCondition(video=[to_pil_cover(end, w, h)], frame_index=nf - 1))
+            gen = torch.Generator(device="cpu").manual_seed(int(seed))
+            kw = accepted(self.pipe.__call__, conditions=conds or None, prompt=prompt, negative_prompt=negative or NEG_DEFAULT, width=w, height=h,
+                          num_frames=nf, num_inference_steps=steps, generator=gen, decode_timestep=0.05, decode_noise_scale=0.025,
+                          callback_on_step_end=step_callback(progress, steps, "Making it") if progress else None, output_type="pil")
+            log(f"LTX {w}x{h}, {nf} frames, {steps} steps, start={start is not None}, end={end is not None}")
+            return self.pipe(**kw).frames[0]
+
+        frames = run_with_retry(call, width, height, nf, budget)
         free_gpu()
         return encode_mp4(frames, os.path.join(OUT, f"ltx-{int(time.time() * 1000)}.mp4"))
 
@@ -226,153 +255,25 @@ class Wan:
     def run(self, *, prompt, negative, width, height, seconds, start=None, end=None, seed=0, quality="fast", progress=None, **_):
         import torch
         self.load()
-        big = vram_gb() >= 40
-        budget = int(os.environ.get("VK_BUDGET", 130_000_000 if big else 40_000_000))
+        budget = default_budget(130_000_000, 20_000_000)
         nf = frames_for(seconds, 4, 121)
-        w, h = fit(width, height, nf, budget)
         steps = 40 if quality == "good" else 24
-        gen = torch.Generator(device="cpu").manual_seed(int(seed))
         pipe = self.t2v
-        extra = {}
         if start is not None:
             if self.i2v is None:
                 from diffusers import WanImageToVideoPipeline
                 self.i2v = WanImageToVideoPipeline.from_pipe(self.t2v)
             pipe = self.i2v
-            extra["image"] = to_pil_cover(start, w, h)
-        kw = accepted(pipe.__call__, prompt=prompt, negative_prompt=negative or NEG_DEFAULT, height=h, width=w, num_frames=nf,
-                      num_inference_steps=steps, guidance_scale=5.0, generator=gen, output_type="pil",
-                      callback_on_step_end=step_callback(progress, steps, "Making it") if progress else None, **extra)
-        log(f"Wan {w}x{h}, {nf} frames, {steps} steps, image={start is not None}")
-        frames = pipe(**kw).frames[0]
+
+        def call(w, h):
+            gen = torch.Generator(device="cpu").manual_seed(int(seed))
+            extra = {"image": to_pil_cover(start, w, h)} if start is not None else {}
+            kw = accepted(pipe.__call__, prompt=prompt, negative_prompt=negative or NEG_DEFAULT, height=h, width=w, num_frames=nf,
+                          num_inference_steps=steps, guidance_scale=5.0, generator=gen, output_type="pil",
+                          callback_on_step_end=step_callback(progress, steps, "Making it") if progress else None, **extra)
+            log(f"Wan {w}x{h}, {nf} frames, {steps} steps, image={start is not None}")
+            return pipe(**kw).frames[0]
+
+        frames = run_with_retry(call, width, height, nf, budget)
         free_gpu()
         return encode_mp4(frames, os.path.join(OUT, f"wan-{int(time.time() * 1000)}.mp4"))
-
-
-ENGINES: dict = {}
-
-
-def engine(name: str):
-    if name not in ENGINES:
-        if name == "stub":
-            ENGINES[name] = Stub()
-        elif name == "wan":
-            for k, e in list(ENGINES.items()):
-                if hasattr(e, "unload"):
-                    e.unload(); ENGINES.pop(k)
-            ENGINES[name] = Wan()
-        else:
-            for k, e in list(ENGINES.items()):
-                if hasattr(e, "unload"):
-                    e.unload(); ENGINES.pop(k)
-            ENGINES[name] = LTX()
-    return ENGINES[name]
-
-
-# ---------------------------------------------------------------------------------------------- the web app
-def build_app():
-    import gradio as gr
-
-    def seed_of(seed, randomize):
-        return random.randint(0, 2 ** 31 - 1) if randomize or seed is None else int(seed)
-
-    def t2v_or_i2v(prompt, negative_prompt, input_image_filepath, input_video_filepath, height_ui, width_ui, mode, duration_ui,
-                   ui_frames_to_use, seed_ui, randomize_seed, ui_guidance_scale, improve_texture_flag, progress=gr.Progress()):
-        sd = seed_of(seed_ui, randomize_seed)
-        eng = engine(ENGINE if ENGINE in ("wan", "stub") else "ltx")
-        start = input_image_filepath if (mode or "").startswith("image") and input_image_filepath else None
-        with LOCK:
-            path = eng.run(prompt=(prompt or "").strip(), negative=(negative_prompt or "").strip(), width=int(width_ui or 768), height=int(height_ui or 512),
-                           seconds=float(duration_ui or 2), start=start, seed=sd, quality="good" if improve_texture_flag else "fast", progress=progress)
-        return path, sd
-
-    def frames(start_image_pil, end_image_pil, prompt, negative_prompt, duration_seconds, steps, guidance_scale, guidance_scale_2, seed,
-               randomize_seed, progress=gr.Progress()):
-        if start_image_pil is None or end_image_pil is None:
-            raise gr.Error("Add a start picture and an end picture.")
-        sd = seed_of(seed, randomize_seed)
-        eng = engine("stub" if ENGINE == "stub" else "ltx")  # start+end always uses LTX (the condition pipeline)
-        w, h = start_image_pil.size
-        with LOCK:
-            path = eng.run(prompt=(prompt or "").strip(), negative=(negative_prompt or "").strip(), width=w, height=h, seconds=float(duration_seconds or 3),
-                           start=start_image_pil, end=end_image_pil, seed=sd, quality="good" if (steps or 0) >= 12 else "fast", progress=progress)
-        return path, sd
-
-    with gr.Blocks(title="VK Editor GPU server") as demo:
-        gr.Markdown(f"### VK Editor: your free GPU server is running\nEngine: **{ENGINE}**. Copy the public link into VK Editor (Settings → My own GPU server). Keep this notebook running while you make videos, and do not share the link.")
-        with gr.Accordion("Inputs (used by the website, you do not need to touch these)", open=False):
-            prompt = gr.Textbox(label="prompt"); neg = gr.Textbox(label="negative_prompt", value=NEG_DEFAULT)
-            img = gr.Image(label="input_image_filepath", type="filepath"); vid = gr.Video(label="input_video_filepath")
-            hh = gr.Number(label="height_ui", value=512); ww = gr.Number(label="width_ui", value=768); mode = gr.Textbox(label="mode", value="text-to-video")
-            dur = gr.Number(label="duration_ui", value=2); fr = gr.Number(label="ui_frames_to_use", value=9); sd = gr.Number(label="seed_ui", value=42)
-            rnd = gr.Checkbox(label="randomize_seed", value=True); gs = gr.Number(label="ui_guidance_scale", value=1); imp = gr.Checkbox(label="improve_texture_flag", value=False)
-            outv = gr.Video(label="video"); outs = gr.Number(label="seed")
-            ins = [prompt, neg, img, vid, hh, ww, mode, dur, fr, sd, rnd, gs, imp]
-            b1 = gr.Button("text_to_video"); b1.click(t2v_or_i2v, ins, [outv, outs], api_name="text_to_video")
-            b2 = gr.Button("image_to_video"); b2.click(t2v_or_i2v, ins, [outv, outs], api_name="image_to_video")
-        with gr.Accordion("Start and end picture", open=False):
-            s_img = gr.Image(label="start_image_pil", type="pil"); e_img = gr.Image(label="end_image_pil", type="pil")
-            f_prompt = gr.Textbox(label="prompt"); f_neg = gr.Textbox(label="negative_prompt", value=NEG_DEFAULT)
-            f_dur = gr.Number(label="duration_seconds", value=3); f_steps = gr.Number(label="steps", value=8)
-            f_g1 = gr.Number(label="guidance_scale", value=1); f_g2 = gr.Number(label="guidance_scale_2", value=1)
-            f_seed = gr.Number(label="seed", value=42); f_rnd = gr.Checkbox(label="randomize_seed", value=True)
-            f_out = gr.Video(label="video"); f_oseed = gr.Number(label="seed")
-            b3 = gr.Button("generate_video")
-            b3.click(frames, [s_img, e_img, f_prompt, f_neg, f_dur, f_steps, f_g1, f_g2, f_seed, f_rnd], [f_out, f_oseed], api_name="generate_video")
-    return demo
-
-
-# ---------------------------------------------------------------------------------------------- public link
-def cloudflared_link(port: int) -> str | None:
-    """Backup way to get a public link if Gradio's own share link is not available."""
-    try:
-        exe = os.path.join(tempfile.gettempdir(), "cloudflared")
-        if not os.path.exists(exe):
-            subprocess.run(["curl", "-sL", "-o", exe, "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"], check=True)
-            os.chmod(exe, 0o755)
-        p = subprocess.Popen([exe, "tunnel", "--url", f"http://127.0.0.1:{port}", "--no-autoupdate"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        t0 = time.time()
-        while time.time() - t0 < 60 and p.stdout:
-            line = p.stdout.readline()
-            m = re.search(r"https://[\w-]+\.trycloudflare\.com", line)
-            if m:
-                return m.group(0)
-    except Exception as e:
-        log("cloudflared failed:", e)
-    return None
-
-
-def banner(url: str):
-    line = "=" * 74
-    print(f"\n{line}\n  YOUR FREE GPU SERVER IS READY\n\n  Copy this link into VK Editor (Settings > My own GPU server):\n\n      {url}\n\n"
-          f"  Keep this notebook running. Do not share the link.\n{line}\n", flush=True)
-
-
-def main():
-    demo = build_app()
-    demo.queue(default_concurrency_limit=1, max_size=6)
-    if ENGINE != "stub":
-        try:  # load the model now, so the first video does not wait for it
-            engine(ENGINE if ENGINE in ("wan",) else "ltx").load()
-        except Exception as e:
-            log("Could not load the model now (it will retry on the first job):", e)
-    share = os.environ.get("VK_SHARE", "1") != "0"
-    launch = dict(server_name="0.0.0.0", server_port=PORT, share=share, show_error=True, prevent_thread_lock=True)
-    try:
-        demo.launch(**launch, strict_cors=False)
-    except TypeError:
-        demo.launch(**launch)
-    url = getattr(demo, "share_url", None)
-    if not url and share:
-        log("Gradio's share link is not available here; trying a Cloudflare link instead ...")
-        url = cloudflared_link(PORT)
-    banner(url or f"http://127.0.0.1:{PORT}  (local only)")
-    try:
-        while True:
-            time.sleep(60)
-    except KeyboardInterrupt:
-        pass
-
-
-if __name__ == "__main__":
-    main()
