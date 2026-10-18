@@ -277,3 +277,132 @@ class Wan:
         frames = run_with_retry(call, width, height, nf, budget)
         free_gpu()
         return encode_mp4(frames, os.path.join(OUT, f"wan-{int(time.time() * 1000)}.mp4"))
+
+
+ENGINES: dict = {}
+
+
+def engine(name: str):
+    if name not in ENGINES:
+        if name == "stub":
+            ENGINES[name] = Stub()
+        elif name == "wan":
+            for k, e in list(ENGINES.items()):
+                if hasattr(e, "unload"):
+                    e.unload(); ENGINES.pop(k)
+            ENGINES[name] = Wan()
+        else:
+            for k, e in list(ENGINES.items()):
+                if hasattr(e, "unload"):
+                    e.unload(); ENGINES.pop(k)
+            ENGINES[name] = LTX()
+    return ENGINES[name]
+
+
+# ---------------------------------------------------------------------------------------------- the web app
+def build_app():
+    import gradio as gr
+
+    def seed_of(seed, randomize):
+        return random.randint(0, 2 ** 31 - 1) if randomize or seed is None else int(seed)
+
+    def t2v_or_i2v(prompt, negative_prompt, input_image_filepath, input_video_filepath, height_ui, width_ui, mode, duration_ui,
+                   ui_frames_to_use, seed_ui, randomize_seed, ui_guidance_scale, improve_texture_flag, progress=gr.Progress()):
+        sd = seed_of(seed_ui, randomize_seed)
+        eng = engine(ENGINE if ENGINE in ("wan", "stub") else "ltx")
+        start = input_image_filepath if (mode or "").startswith("image") and input_image_filepath else None
+        with LOCK:
+            path = eng.run(prompt=(prompt or "").strip(), negative=(negative_prompt or "").strip(), width=int(width_ui or 768), height=int(height_ui or 512),
+                           seconds=float(duration_ui or 2), start=start, seed=sd, quality="good" if improve_texture_flag else "fast", progress=progress)
+        return path, sd
+
+    def frames(start_image_pil, end_image_pil, prompt, negative_prompt, duration_seconds, steps, guidance_scale, guidance_scale_2, seed,
+               randomize_seed, progress=gr.Progress()):
+        if start_image_pil is None or end_image_pil is None:
+            raise gr.Error("Add a start picture and an end picture.")
+        sd = seed_of(seed, randomize_seed)
+        eng = engine("stub" if ENGINE == "stub" else "ltx")  # start+end always uses LTX (the condition pipeline)
+        w, h = start_image_pil.size
+        with LOCK:
+            path = eng.run(prompt=(prompt or "").strip(), negative=(negative_prompt or "").strip(), width=w, height=h, seconds=float(duration_seconds or 3),
+                           start=start_image_pil, end=end_image_pil, seed=sd, quality="good" if (steps or 0) >= 12 else "fast", progress=progress)
+        return path, sd
+
+    with gr.Blocks(title="VK Editor GPU server") as demo:
+        gr.Markdown(f"### VK Editor: your free GPU server is running\nEngine: **{ENGINE}**. Copy the public link into VK Editor (Settings → My own GPU server). Keep this notebook running while you make videos, and do not share the link.")
+        with gr.Accordion("Inputs (used by the website, you do not need to touch these)", open=False):
+            prompt = gr.Textbox(label="prompt"); neg = gr.Textbox(label="negative_prompt", value=NEG_DEFAULT)
+            img = gr.Image(label="input_image_filepath", type="filepath"); vid = gr.Video(label="input_video_filepath")
+            hh = gr.Number(label="height_ui", value=512); ww = gr.Number(label="width_ui", value=768); mode = gr.Textbox(label="mode", value="text-to-video")
+            dur = gr.Number(label="duration_ui", value=2); fr = gr.Number(label="ui_frames_to_use", value=9); sd = gr.Number(label="seed_ui", value=42)
+            rnd = gr.Checkbox(label="randomize_seed", value=True); gs = gr.Number(label="ui_guidance_scale", value=1); imp = gr.Checkbox(label="improve_texture_flag", value=False)
+            outv = gr.Video(label="video"); outs = gr.Number(label="seed")
+            ins = [prompt, neg, img, vid, hh, ww, mode, dur, fr, sd, rnd, gs, imp]
+            b1 = gr.Button("text_to_video"); b1.click(t2v_or_i2v, ins, [outv, outs], api_name="text_to_video")
+            b2 = gr.Button("image_to_video"); b2.click(t2v_or_i2v, ins, [outv, outs], api_name="image_to_video")
+        with gr.Accordion("Start and end picture", open=False):
+            s_img = gr.Image(label="start_image_pil", type="pil"); e_img = gr.Image(label="end_image_pil", type="pil")
+            f_prompt = gr.Textbox(label="prompt"); f_neg = gr.Textbox(label="negative_prompt", value=NEG_DEFAULT)
+            f_dur = gr.Number(label="duration_seconds", value=3); f_steps = gr.Number(label="steps", value=8)
+            f_g1 = gr.Number(label="guidance_scale", value=1); f_g2 = gr.Number(label="guidance_scale_2", value=1)
+            f_seed = gr.Number(label="seed", value=42); f_rnd = gr.Checkbox(label="randomize_seed", value=True)
+            f_out = gr.Video(label="video"); f_oseed = gr.Number(label="seed")
+            b3 = gr.Button("generate_video")
+            b3.click(frames, [s_img, e_img, f_prompt, f_neg, f_dur, f_steps, f_g1, f_g2, f_seed, f_rnd], [f_out, f_oseed], api_name="generate_video")
+    return demo
+
+
+# ---------------------------------------------------------------------------------------------- public link
+def cloudflared_link(port: int) -> str | None:
+    """Backup way to get a public link if Gradio's own share link is not available."""
+    try:
+        exe = os.path.join(tempfile.gettempdir(), "cloudflared")
+        if not os.path.exists(exe):
+            subprocess.run(["curl", "-sL", "-o", exe, "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"], check=True)
+            os.chmod(exe, 0o755)
+        p = subprocess.Popen([exe, "tunnel", "--url", f"http://127.0.0.1:{port}", "--no-autoupdate"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        t0 = time.time()
+        while time.time() - t0 < 60 and p.stdout:
+            line = p.stdout.readline()
+            m = re.search(r"https://[\w-]+\.trycloudflare\.com", line)
+            if m:
+                return m.group(0)
+    except Exception as e:
+        log("cloudflared failed:", e)
+    return None
+
+
+def banner(url: str):
+    line = "=" * 74
+    print(f"\n{line}\n  YOUR FREE GPU SERVER IS READY\n\n  Copy this link into VK Editor (Settings > My own GPU server):\n\n      {url}\n\n"
+          f"  Keep this notebook running. Do not share the link.\n{line}\n", flush=True)
+
+
+def main():
+    demo = build_app()
+    demo.queue(default_concurrency_limit=1, max_size=6)
+    if ENGINE != "stub":
+        try:  # load the model now, so the first video does not wait for it
+            engine(ENGINE if ENGINE in ("wan",) else "ltx").load()
+        except Exception as e:
+            log("Could not load the model now (it will retry on the first job):", e)
+    share = os.environ.get("VK_SHARE", "1") != "0"
+    launch = dict(server_name="0.0.0.0", server_port=PORT, share=share, show_error=True, prevent_thread_lock=True)
+    try:
+        demo.launch(**launch, strict_cors=False)
+    except TypeError:
+        demo.launch(**launch)
+    url = getattr(demo, "share_url", None)
+    if not url and share:
+        log("Gradio's share link is not available here; trying a Cloudflare link instead ...")
+        url = cloudflared_link(PORT)
+    banner(url or f"http://127.0.0.1:{PORT}  (local only)")
+    try:
+        while True:
+            time.sleep(60)
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
