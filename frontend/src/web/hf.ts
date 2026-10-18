@@ -8,10 +8,13 @@ import { recordUse } from "../../../shared/web/quota";
 export const DEFAULT_SPACES = { ltx: "Lightricks/ltx-video-distilled", animate: "alexnasa/Wan2.2-Animate-ZEROGPU", frames: "multimodalart/wan-2-2-first-last-frame" } as const;
 const KEY = "vk_hf_v1";
 
-export interface HFConfig { token: string; ltx: string; animate: string; frames: string }
+export interface HFConfig { token: string; ltx: string; animate: string; frames: string; server: string }
+/** A link (https://…) means the user's own GPU server (Kaggle/Colab notebook) instead of a Hugging Face Space. */
+export const isLink = (s: string) => /^https?:\/\//i.test((s ?? "").trim());
+export const cleanLink = (s: string) => (s ?? "").trim().replace(/\/+$/, "");
 export function loadHF(): HFConfig {
-  try { const s = JSON.parse(localStorage.getItem(KEY) ?? "null"); if (s) return { token: s.token ?? "", ltx: s.ltx || DEFAULT_SPACES.ltx, animate: s.animate || DEFAULT_SPACES.animate, frames: s.frames || DEFAULT_SPACES.frames }; } catch { /* ignore */ }
-  return { token: "", ltx: DEFAULT_SPACES.ltx, animate: DEFAULT_SPACES.animate, frames: DEFAULT_SPACES.frames };
+  try { const s = JSON.parse(localStorage.getItem(KEY) ?? "null"); if (s) return { token: s.token ?? "", ltx: s.ltx || DEFAULT_SPACES.ltx, animate: s.animate || DEFAULT_SPACES.animate, frames: s.frames || DEFAULT_SPACES.frames, server: isLink(s.server) ? cleanLink(s.server) : "" }; } catch { /* ignore */ }
+  return { token: "", ltx: DEFAULT_SPACES.ltx, animate: DEFAULT_SPACES.animate, frames: DEFAULT_SPACES.frames, server: "" };
 }
 export function saveHF(patch: Partial<HFConfig>): HFConfig {
   const c = { ...loadHF(), ...patch };
@@ -28,6 +31,13 @@ const spaceKey = (id: string) => id.trim().replace(/^https?:\/\/huggingface\.co\
 
 /** Is the Space awake? (Free Spaces go to sleep and need a few minutes to start.) */
 export async function spaceStatus(id: string): Promise<{ stage: string; hardware: string; ok: boolean; text: string }> {
+  if (isLink(id)) {
+    try {
+      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 12000);
+      const r = await fetch(`${cleanLink(id)}/config`, { signal: ctl.signal }); clearTimeout(t);
+      return r.ok ? { stage: "RUNNING", hardware: "your GPU", ok: true, text: "Your own GPU server is online." } : { stage: "UNKNOWN", hardware: "", ok: false, text: `Your GPU server answered ${r.status}. Run the notebook again and paste the new link.` };
+    } catch { return { stage: "OFFLINE", hardware: "", ok: false, text: "Cannot reach your GPU server. The notebook may have stopped: run it again and paste the new link." }; }
+  }
   const sp = spaceKey(id);
   try {
     const r = await fetch(`https://huggingface.co/api/spaces/${sp}`);
@@ -52,6 +62,11 @@ function friendly(msg: string): string {
 }
 
 async function connect(space: string, token: string, onStage: (s: Stage) => void): Promise<Client> {
+  if (isLink(space)) { // your own GPU server: the Hugging Face token is never sent there
+    onStage({ phase: "Connecting to your own GPU server", fraction: 0.02 });
+    try { return await Client.connect(cleanLink(space), { record_history: false } as any); }
+    catch { throw new HFError("Cannot reach your own GPU server. The Kaggle/Colab notebook may have stopped or the link changed: run it again and paste the new link in AI settings."); }
+  }
   const sp = spaceKey(space);
   if (!/^[\w.-]+\/[\w.-]+$/.test(sp)) throw new HFError("The Space name must look like owner/name. Check AI settings.");
   onStage({ phase: "Connecting to the free GPU Space", fraction: 0.02 });
@@ -92,9 +107,10 @@ function pickFile(v: any): { url: string; name: string } | null {
 /** Sends one job to a Space and waits for the file it returns. Reports queue position and progress. Counts free GPU seconds in the meter. */
 export async function runSpace(o: RunOpts): Promise<{ blob: Blob; data: any[]; seconds: number }> {
   const cfg = loadHF();
+  const own = isLink(o.space);
   const client = await connect(o.space, cfg.token, o.onStage);
   await needParams(client, o.endpoint, o.params);
-  o.onStage({ phase: "Waiting for a free GPU", fraction: 0.05 });
+  o.onStage({ phase: own ? "Waiting for your GPU" : "Waiting for a free GPU", fraction: 0.05 });
   const sub: any = (client as any).submit(o.endpoint, o.payload, undefined, undefined, true); // the 5th argument asks for status events (queue place, progress, errors) too, not only the final data
   o.signal?.on?.(() => { void sub.cancel?.(); });
   let started = 0, out: any[] | null = null;
@@ -115,17 +131,17 @@ export async function runSpace(o: RunOpts): Promise<{ blob: Blob; data: any[]; s
   } catch (e) {
     if (e instanceof HFError) throw e;
     const m = e instanceof Error ? e.message : typeof e === "object" && e ? JSON.stringify(e).slice(0, 300) : String(e);
-    throw new HFError(friendly(m));
+    throw new HFError(own ? `Your GPU server stopped this job: ${m.slice(0, 200)}. If it keeps happening, try a shorter or smaller video, or restart the notebook.` : friendly(m));
   }
   if (o.signal?.cancelled) throw new HFError("Cancelled.");
   if (!out) throw new HFError("The Space finished without sending a video. Try again.");
   const seconds = started ? Math.max(1, Math.round((Date.now() - started) / 1000)) : 0;
-  if (seconds) recordUse("zerogpu", Date.now(), Math.min(seconds, 600));
+  if (seconds && !own) recordUse("zerogpu", Date.now(), Math.min(seconds, 600));
   const first = (out as any[]).map(pickFile).find(Boolean);
   if (!first) throw new HFError("The Space did not return a video file.");
   o.onStage({ phase: "Downloading the video", fraction: 0.95 });
   let res = await fetch(first.url).catch(() => null);
-  if ((!res || res.status === 401 || res.status === 403) && cfg.token) res = await fetch(first.url, { headers: { Authorization: `Bearer ${cfg.token}` } }).catch(() => null);
+  if (!own && (!res || res.status === 401 || res.status === 403) && cfg.token) res = await fetch(first.url, { headers: { Authorization: `Bearer ${cfg.token}` } }).catch(() => null);
   if (!res || !res.ok) throw new HFError("The video was made but could not be downloaded from Hugging Face. Try again.");
   const blob = new Blob([await res.arrayBuffer()], { type: res.headers.get("content-type")?.startsWith("video/") ? res.headers.get("content-type")! : "video/mp4" });
   return { blob, data: out, seconds };

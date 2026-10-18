@@ -73,9 +73,9 @@ export async function makeVideo(h: Helpers, b: VideoBody): Promise<Made> {
       seed: b.seed != null && Number.isFinite(b.seed) ? Math.round(b.seed) : 42,
       randomize_seed: !(b.seed != null && Number.isFinite(b.seed)),
     };
-    const r = await runSpace({ space: cfg.frames, endpoint: "/generate_video", params: ["start_image_pil", "end_image_pil", "prompt", "duration_seconds"], payload, onStage: h.stage, signal: h.signal });
+    const r = await runSpace({ space: cfg.server || cfg.frames, endpoint: "/generate_video", params: ["start_image_pil", "end_image_pil", "prompt", "duration_seconds"], payload, onStage: h.stage, signal: h.signal });
     const seed = Array.isArray(r.data) && typeof r.data[1] === "number" ? r.data[1] : null;
-    return { blob: r.blob, name: `Start to end - ${b.prompt.trim().slice(0, 36) || "clip"}.mp4`, meta: { prompt: b.prompt.trim(), seed, width, height, seconds: secs, space: cfg.frames, mode: "frames", gpu_seconds: r.seconds } };
+    return { blob: r.blob, name: `Start to end - ${b.prompt.trim().slice(0, 36) || "clip"}.mp4`, meta: { prompt: b.prompt.trim(), seed, width, height, seconds: secs, space: cfg.server || cfg.frames, mode: "frames", gpu_seconds: r.seconds } };
   }
   if (b.mode === "i2v") {
     const a = await h.mustAsset(b.image_asset_id ?? "");
@@ -107,10 +107,10 @@ export async function makeVideo(h: Helpers, b: VideoBody): Promise<Made> {
   };
   // input_image_filepath stays null for text-to-video: Gradio treats a missing value as an error unless the Space gave it a default
   const params = ["prompt", "height_ui", "width_ui", "duration_ui", ...(fromImage ? ["input_image_filepath"] : [])];
-  const r = await runSpace({ space: cfg.ltx, endpoint, params, payload, onStage: h.stage, signal: h.signal });
+  const r = await runSpace({ space: cfg.server || cfg.ltx, endpoint, params, payload, onStage: h.stage, signal: h.signal });
   const seed = Array.isArray(r.data) && typeof r.data[1] === "number" ? r.data[1] : null;
   const label = b.mode === "extend" ? "Continues" : b.mode === "i2v" ? "Picture to video" : "Text to video";
-  return { blob: r.blob, name: `${label} - ${b.prompt.trim().slice(0, 36) || "clip"}.mp4`, meta: { prompt: b.prompt.trim(), seed, width, height, seconds, space: cfg.ltx, mode: b.mode, gpu_seconds: r.seconds } };
+  return { blob: r.blob, name: `${label} - ${b.prompt.trim().slice(0, 36) || "clip"}.mp4`, meta: { prompt: b.prompt.trim(), seed, width, height, seconds, space: cfg.server || cfg.ltx, mode: b.mode, gpu_seconds: r.seconds } };
 }
 
 export interface MotionBody { image_asset_id: string; video_asset_id: string; mode: "Character Swap" | "Pose Retarget"; quality: "Low Res" | "Medium Res"; seconds: number }

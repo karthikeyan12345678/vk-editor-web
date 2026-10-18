@@ -8,7 +8,7 @@ import { idb, persist } from "../../../shared/web/idb";
 import { complete, currentConfig, encodeImage, listModels, LLMError, loadSaved, PRESETS, savePatch, type Msg } from "../../../shared/web/llm";
 import { blobOf, forget, hydrate, kindOf, probe, saveThumb } from "./media";
 import { makeVideo, motionControl, type Helpers, type Made } from "./gen";
-import { loadHF, saveHF, spaceStatus } from "./hf";
+import { cleanLink, isLink, loadHF, saveHF, spaceStatus } from "./hf";
 import { addHistory, noteProjectEdit } from "../../../shared/web/history";
 import { markProjectDeleted } from "../../../shared/web/drive";
 
@@ -379,9 +379,9 @@ export async function webCall(method: string, path: string, body?: any, form?: F
     void runGen(job, "motion", (h) => motionControl(h, body));
     return job;
   }
-  if (is("GET", /^\/web\/hf$/)) { const c = loadHF(); return { has_token: !!c.token, ltx: c.ltx, animate: c.animate, frames: c.frames }; }
-  if (is("PUT", /^\/web\/hf$/)) { const c = saveHF({ ...(body.token !== undefined ? { token: String(body.token).trim() } : {}), ...(body.ltx ? { ltx: String(body.ltx).trim() } : {}), ...(body.animate ? { animate: String(body.animate).trim() } : {}), ...(body.frames ? { frames: String(body.frames).trim() } : {}) }); return { has_token: !!c.token, ltx: c.ltx, animate: c.animate, frames: c.frames }; }
-  if (is("GET", /^\/web\/hf\/status$/)) { const c = loadHF(); const [a, b, f] = await Promise.all([spaceStatus(c.ltx), spaceStatus(c.animate), spaceStatus(c.frames)]); return { ltx: a, animate: b, frames: f }; }
+  if (is("GET", /^\/web\/hf$/)) { const c = loadHF(); return { has_token: !!c.token, ltx: c.ltx, animate: c.animate, frames: c.frames, server: c.server }; }
+  if (is("PUT", /^\/web\/hf$/)) { const c = saveHF({ ...(body.token !== undefined ? { token: String(body.token).trim() } : {}), ...(body.ltx ? { ltx: String(body.ltx).trim() } : {}), ...(body.animate ? { animate: String(body.animate).trim() } : {}), ...(body.frames ? { frames: String(body.frames).trim() } : {}), ...(body.server !== undefined ? { server: isLink(String(body.server)) ? cleanLink(String(body.server)) : "" } : {}) }); return { has_token: !!c.token, ltx: c.ltx, animate: c.animate, frames: c.frames, server: c.server }; }
+  if (is("GET", /^\/web\/hf\/status$/)) { const c = loadHF(); const [a, b, f, sv] = await Promise.all([spaceStatus(c.ltx), spaceStatus(c.animate), spaceStatus(c.frames), c.server ? spaceStatus(c.server) : Promise.resolve(null)]); return { ltx: a, animate: b, frames: f, server: sv }; }
 
   if (is("POST", /^\/editor\/chat$/)) return chatTurn(body);
   if (is("GET", /^\/editor\/chat\/status$/)) {

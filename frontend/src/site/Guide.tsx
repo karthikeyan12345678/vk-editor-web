@@ -5,7 +5,7 @@ import "./site.css";
 
 const TOC: [string, string][] = [
   ["start", "Quick start"], ["account", "Sign in and your history"], ["video", "Text, picture and continue"], ["motion", "Motion control"], ["assistant", "AI Assistant"],
-  ["editor", "The editor"], ["free", "Free limits explained"], ["keys", "Free AI keys"], ["local", "Run it on your computer"], ["fix", "If something goes wrong"], ["privacy", "Privacy"],
+  ["editor", "The editor"], ["free", "Free limits explained"], ["gpu", "Your own free GPU"], ["keys", "Free AI keys"], ["local", "Run it on your computer"], ["fix", "If something goes wrong"], ["privacy", "Privacy"],
 ];
 
 export default function Guide() {
@@ -83,8 +83,17 @@ export default function Guide() {
               <tr><th scope="row">AI video and motion control</th><td>Hugging Face free GPU time: about 5 minutes a day with a free account token, about 2 minutes without. It renews about 24 hours after you first used it. The meter on the Make video page shows your estimate.</td></tr>
               <tr><th scope="row">Chat and the Assistant</th><td>Your own free key from Groq, Gemini and others; each has a daily allowance that renews.</td></tr>
               <tr><th scope="row">Pictures</th><td>AI Horde: free, may queue. Hugging Face FLUX or Together: free token.</td></tr></tbody></table></div>
-            <p className="l-note">Numbers come from the providers and change. Free GPUs are shared, so you can wait in a queue, and a Space can be asleep or paused by its owner. For no limits, run the desktop version.</p></section>
+            <p className="l-note">Numbers come from the providers and change. Free GPUs are shared, so you can wait in a queue, and a Space can be asleep or paused by its owner. For no limits, use <a href="#gpu" onClick={top("gpu")}>your own free GPU</a> or run the desktop version.</p></section>
 
+          <section id="gpu"><h2>Your own free GPU: no daily limit</h2>
+            <p>Hugging Face’s free GPU time runs out after a few minutes a day. To remove that limit for Text to video, Picture to video, Continue a clip and Start/End pictures, run the video model on a <b>free Kaggle or Google Colab GPU</b> that you control. The website then sends the jobs to your notebook instead.</p>
+            <ol>
+              <li><a href="./gpu-server/VK_Editor_GPU_Server.ipynb" download>Download the notebook</a> (VK_Editor_GPU_Server.ipynb).</li>
+              <li><b>Kaggle (best):</b> make a free account at <a href="https://www.kaggle.com" target="_blank" rel="noreferrer">kaggle.com</a> and verify your phone (needed for GPU and internet). Choose Create, then Notebook, then File, Import notebook, and upload the file. On the right open Settings: Accelerator <b>GPU T4 x2</b>, Internet <b>On</b>. Kaggle gives about 30 free GPU hours a week. <b>Colab:</b> open <a href="https://colab.research.google.com" target="_blank" rel="noreferrer">colab.research.google.com</a>, upload the notebook, and choose Runtime, Change runtime type, <b>T4 GPU</b>.</li>
+              <li>Press <b>Run all</b>. The first start downloads the model (about 5 to 15 minutes). The last cell prints <b>YOUR FREE GPU SERVER IS READY</b> and a link that starts with https://.</li>
+              <li>Here on the website open Settings, <b>My own GPU server</b>, paste the link, press Save, then Check my GPU server.</li>
+            </ol>
+            <p className="l-note">Keep the notebook tab running while you make videos. Free sessions stop after some hours or when idle: run it again and paste the new link. Do not share the link. In the notebook you can switch the engine to “wan” for sharper, more natural motion (much slower). Write detailed prompts: who or what, the place, the light, and the camera move. Motion control still uses Hugging Face.</p></section>
           <section id="keys"><h2>Free AI keys (2 minutes each)</h2>
             <ol><li><b>Hugging Face token</b> (for video): <a href="https://huggingface.co/join" target="_blank" rel="noreferrer">create a free account</a>, then <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer">Settings, Access Tokens, New token, type Read</a>. Paste it in this site’s Settings, Free GPU video.</li>
               <li><b>Chat key</b>: <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">Groq</a> (fast) or <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google Gemini</a>. Paste it in Settings, AI chat, then Save and test.</li></ol>

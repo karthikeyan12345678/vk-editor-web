@@ -32,7 +32,8 @@ export default function MakeVideoWeb({ goLibrary, goSettings, goEditor }: { goLi
   const [busy, setBusy] = useState(false);
   const [more, setMore] = useState(false);
   const [hasToken, setHasToken] = useState(() => !!loadHF().token);
-  useEffect(() => { const on = () => setHasToken(!!loadHF().token); window.addEventListener("vk-hf", on); return () => window.removeEventListener("vk-hf", on); }, []);
+  const [own, setOwn] = useState(() => !!loadHF().server);
+  useEffect(() => { const on = () => { setHasToken(!!loadHF().token); setOwn(!!loadHF().server); }; window.addEventListener("vk-hf", on); return () => window.removeEventListener("vk-hf", on); }, []);
 
   const job: Job | null = jobs.find((j) => j.id === jobId) ?? null;
   const active = !!job && (job.status === "queued" || job.status === "running");
@@ -58,12 +59,12 @@ export default function MakeVideoWeb({ goLibrary, goSettings, goEditor }: { goLi
   return (
     <main className="page gen">
       <div className="gen-head row between gap wrap">
-        <div className="stack"><h1>Make a video</h1><p className="text-sm muted">Runs on a free GPU from Hugging Face · nothing to install · your pictures are sent only to that Space</p></div>
+        <div className="stack"><h1>Make a video</h1><p className="text-sm muted">{own ? "Runs on your own free GPU (Kaggle or Colab) · no daily limit · your pictures go only to your notebook" : "Runs on a free GPU from Hugging Face · nothing to install · your pictures are sent only to that Space"}</p></div>
         <Tabs label="What to start from" value={tab} onChange={(m) => { setTab(m); setResultId(null); }} options={[{ id: "create", label: "Create" }, { id: "extend", label: "Continue a clip" }]} />
       </div>
 
-      {!hasToken && (
-        <div className="notice" role="note"><span>No Hugging Face token yet: you get a smaller free GPU allowance. A free account gives more, and it renews every day. </span><button type="button" className="linklike" onClick={goSettings}>Add a free token</button></div>
+      {!hasToken && !own && (
+        <div className="notice" role="note"><span>Hit the daily free GPU limit? Use your own free GPU (Kaggle or Colab) with no limit, or add a free Hugging Face token for more time. </span><button type="button" className="linklike" onClick={goSettings}>Set up</button></div>
       )}
 
       <section className="gen-stage" aria-label="Result" aria-live="polite">
@@ -130,11 +131,11 @@ export default function MakeVideoWeb({ goLibrary, goSettings, goEditor }: { goLi
         )}
       </section>
 
-      <section className="card stack gap" aria-label="Free GPU time">
+      {!own && <section className="card stack gap" aria-label="Free GPU time">
         <div className="row between gap wrap"><b className="text-sm">Free GPU time (this browser’s estimate)</b><button type="button" className="linklike text-sm" onClick={goSettings}>AI settings</button></div>
         <QuotaMeter provider="zerogpu" />
         <p className="text-xs muted">Hugging Face gives a free account about 5 minutes of GPU time a day (2 minutes with no account) and renews it about 24 hours after you first used it. The real number is kept by Hugging Face.</p>
-      </section>
+      </section>}
     </main>
   );
 }

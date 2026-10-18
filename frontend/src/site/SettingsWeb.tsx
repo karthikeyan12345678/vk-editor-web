@@ -3,7 +3,7 @@ import { Button, Tabs } from "../ds";
 import WebAI from "../web/WebAI";
 import QuotaMeter from "../web/QuotaMeter";
 import { webCall } from "../web/backend";
-import { DEFAULT_SPACES, loadHF, saveHF } from "../web/hf";
+import { cleanLink, DEFAULT_SPACES, isLink, loadHF, saveHF } from "../web/hf";
 import { currentProfile } from "../../../shared/web/account";
 import { config } from "../../../shared/web/config";
 import { reconnectDrive, signOut } from "../../../shared/web/auth";
@@ -15,17 +15,31 @@ function GpuSettings() {
   const [c, setC] = useState(loadHF());
   const [token, setToken] = useState("");
   const [msg, setMsg] = useState("");
-  const [st, setSt] = useState<{ ltx: { text: string; ok: boolean }; animate: { text: string; ok: boolean }; frames: { text: string; ok: boolean } } | null>(null);
+  const [st, setSt] = useState<{ ltx: { text: string; ok: boolean }; animate: { text: string; ok: boolean }; frames: { text: string; ok: boolean }; server?: { text: string; ok: boolean } | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const save = () => {
-    const n = saveHF({ ...(token.trim() ? { token: token.trim() } : {}), ltx: c.ltx.trim() || DEFAULT_SPACES.ltx, animate: c.animate.trim() || DEFAULT_SPACES.animate, frames: (c.frames ?? "").trim() || DEFAULT_SPACES.frames });
+    const n = saveHF({ ...(token.trim() ? { token: token.trim() } : {}), ltx: c.ltx.trim() || DEFAULT_SPACES.ltx, animate: c.animate.trim() || DEFAULT_SPACES.animate, frames: (c.frames ?? "").trim() || DEFAULT_SPACES.frames, server: isLink(c.server ?? "") ? cleanLink(c.server) : "" });
     setC(n); setToken(""); setMsg("Saved in this browser.");
   };
   const check = async () => { setBusy(true); try { setSt(await webCall("GET", "/web/hf/status")); } finally { setBusy(false); } };
   return (
     <div className="stack gap">
       <div className="card stack gap">
-        <h2>Free GPU for AI video</h2>
+        <h2>My own GPU server (no daily limit)</h2>
+        <p className="text-sm">Run the video model on a <b>free Kaggle or Google Colab GPU</b> that is yours. Hugging Face’s daily limit then no longer applies to Text to video, Picture to video, Continue a clip and Start/End pictures. Kaggle gives about 30 free GPU hours a week. Sessions end after some hours: run the notebook again and paste the new link.</p>
+        <ol className="text-sm">
+          <li><a href="./gpu-server/VK_Editor_GPU_Server.ipynb" download>Download the notebook</a>, upload it to <a href="https://www.kaggle.com" target="_blank" rel="noreferrer">Kaggle</a> (best) or <a href="https://colab.research.google.com" target="_blank" rel="noreferrer">Colab</a>, turn on a GPU and press <b>Run all</b>. <a href="#/guide">Full steps</a>.</li>
+          <li>When it prints <b>“YOUR FREE GPU SERVER IS READY”</b>, copy the link it shows (it starts with <code>https://</code>).</li>
+          <li>Paste it below and press Save. Leave it empty to use Hugging Face again.</li>
+        </ol>
+        <label className="field"><span>Your GPU server link</span>
+          <input className="input" value={c.server ?? ""} onChange={(e) => setC({ ...c, server: e.target.value })} placeholder="https://xxxxxxxx.gradio.live" inputMode="url" autoComplete="off" /></label>
+        <p className="text-xs muted">Only people who have this link can use your GPU, so do not share it. Your Hugging Face token is never sent to it. Motion control still uses Hugging Face.</p>
+        <div className="row gap wrap"><Button onClick={save}>Save</Button><Button variant="secondary" busy={busy} onClick={() => void check()}>Check my GPU server</Button></div>
+        {st?.server && <p className="text-sm" role="status"><b>My GPU server:</b> {st.server.text}</p>}
+      </div>
+      <div className="card stack gap">
+        <h2>Free GPU for AI video (Hugging Face)</h2>
         <p className="text-sm">Text to video, picture to video, continue a clip and motion control run on <b>Hugging Face Spaces</b>: free graphics cards (“ZeroGPU”) that Hugging Face shares. A free Hugging Face account gets about <b>5 minutes of GPU time a day</b> (2 minutes with no account), and it renews by itself about 24 hours after you first used it. The numbers are Hugging Face’s and can change.</p>
         <ol className="text-sm">
           <li>Create a free account at <a href="https://huggingface.co/join" target="_blank" rel="noreferrer">huggingface.co/join</a>.</li>

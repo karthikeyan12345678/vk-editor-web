@@ -16,6 +16,9 @@ let pass = 0; const fails = [];
 const ok = (cond, name, extra = "") => { if (cond) { pass++; console.log("  ok  ", name); } else { fails.push(name); console.log("  FAIL", name, extra); } };
 const step = (s) => console.log("\n" + s);
 
+// the "own GPU server" (gpu-server/vk_gpu_server.py in test mode: no AI model, a test-pattern video) for step 6c
+const gpuPort = 7861;
+const gpu = spawn("python3", [join(here, "..", "..", "gpu-server", "vk_gpu_server.py")], { stdio: "ignore", env: { ...process.env, VK_ENGINE: "stub", VK_SHARE: "0", VK_PORT: String(gpuPort) } });
 const server = spawn("python3", ["-m", "http.server", String(PORT), "--bind", "127.0.0.1", "--directory", dist], { stdio: "ignore" });
 await new Promise((r) => setTimeout(r, 800));
 makeFiles();
@@ -120,10 +123,28 @@ try {
   await page.locator(".frames .slot-x").nth(1).click();
   await page.locator(".frames .slot-x").first().click();
 
+  step("6c. Own GPU server (Kaggle/Colab link)");
+  let gpuUp = false;
+  for (let i = 0; i < 40 && !gpuUp; i++) { gpuUp = await fetch(`http://127.0.0.1:${gpuPort}/config`).then((r) => r.ok).catch(() => false); if (!gpuUp) await new Promise((r) => setTimeout(r, 1000)); }
+  if (!gpuUp) console.log("  skip  own GPU server test (python gradio is not installed here)");
+  else {
+    const callsBefore = state.spaceCalls.length;
+    await page.evaluate((u) => { const c = JSON.parse(localStorage.getItem("vk_hf_v1") ?? "{}"); c.server = u; localStorage.setItem("vk_hf_v1", JSON.stringify(c)); window.dispatchEvent(new Event("vk-hf")); }, `http://127.0.0.1:${gpuPort}/`);
+    await page.waitForFunction(() => /your own free GPU/i.test(document.body.innerText), null, { timeout: 10000 }).catch(() => undefined);
+    ok(/your own free GPU/i.test(await page.locator("body").innerText()), "the page says it runs on your own free GPU");
+    ok(await page.locator('[aria-label="Free GPU time"]').count() === 0, "the Hugging Face quota meter is hidden for an own server");
+    await page.locator("textarea").first().fill("A calm lake at sunrise");
+    await page.getByRole("button", { name: "Generate" }).click();
+    await page.getByRole("button", { name: "Edit this video" }).waitFor({ timeout: 90000 });
+    ok(state.spaceCalls.length === callsBefore, "the job went to the own server, not to Hugging Face");
+    await shot("06c-own-gpu");
+    await page.evaluate(() => { const c = JSON.parse(localStorage.getItem("vk_hf_v1") ?? "{}"); c.server = ""; localStorage.setItem("vk_hf_v1", JSON.stringify(c)); window.dispatchEvent(new Event("vk-hf")); });
+  }
+
   step("7. Continue a clip");
   await page.getByRole("tab", { name: "Continue a clip" }).click();
   await page.getByRole("button", { name: "From library" }).first().click();
-  await page.locator(".slot-pop button, .slot-pop .pick, .slot-pop [role=option]").first().click().catch(async () => { await page.locator(".slot-pop *").filter({ hasText: /Text to video/ }).first().click(); });
+  await page.locator(".slot-pop button, .slot-pop .pick, .slot-pop [role=option]").filter({ hasNotText: /calm lake/ }).first().click().catch(async () => { await page.locator(".slot-pop *").filter({ hasText: /Text to video/, hasNotText: /calm lake/ }).first().click(); });
   await page.waitForSelector(".slot-filled", { timeout: 20000 });
   await page.locator("textarea").first().fill("The waves keep rolling");
   const before = state.spaceCalls.length;
@@ -318,5 +339,5 @@ try {
 console.log("\npage errors:", errors.length ? errors : "none");
 ok(errors.length === 0, "no page errors");
 console.log(`\n${pass} passed, ${fails.length} failed`, fails);
-await browser.close(); server.kill();
+await browser.close(); server.kill(); gpu.kill();
 process.exit(fails.length ? 1 : 0);
