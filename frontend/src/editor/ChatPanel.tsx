@@ -296,7 +296,7 @@ export default function ChatPanel({ project, commit, asset, onOpenAsset, onUndo,
             {pics.map((p) => <span key={p.id} className="chat-pic"><img alt={p.name} src={mediaUrl(p.id, "thumb")} /><button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPics((x) => x.filter((y) => y.id !== p.id))}>×</button></span>)}
           </div>
         )}
-        <textarea className="fx-text" rows={IS_WEB ? 1 : 2} aria-label="Message" placeholder="Describe how to edit this video…" value={text} maxLength={4000}
+        <textarea className="fx-text" rows={IS_WEB ? 1 : 2} aria-label="Message" placeholder="Ask the AI to edit…" value={text} maxLength={4000}
           onFocus={() => setLogOpen(true)} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} />
         <div className="fx-row">
           <button type="button" className="fx-round" aria-label="Add reference pictures" title="Add reference pictures" disabled={pics.length >= 4} onClick={() => setPicker((v) => !v)}>+</button>

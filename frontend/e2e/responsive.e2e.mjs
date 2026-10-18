@@ -70,7 +70,15 @@ for (const [name, W, H] of SIZES) {
   await page.waitForTimeout(800); await snap("04b-make-start-picture");
   await go("motion", "#/app/motion", "05-motion", "main");
   await go("library", "#/app/library", "06-library", "main");
-  await go("editor", "#/app/editor", "07-editor", "main");
+  await go("editor", "#/app/editor", "07-editor", ".fx-top");
+  if (W < 800) {
+    const box = async (sel) => page.locator(sel).first().boundingBox();
+    for (const sel of [".fx-top .fx-done", ".fx-tools", ".timeline", ".fx-prompt .fx-send"]) { const b = await box(sel); if (!b || b.y + b.height > H + 1 || b.x + b.width > W + 1) { bad++; console.log(`  FAIL editor: ${sel} off screen`, JSON.stringify(b)); } }
+    await page.getByRole("button", { name: "Filters", exact: true }).click().catch(() => undefined); await snap("07b-editor-filters-sheet");
+    await page.locator(".sheet-x").first().click().catch(() => undefined);
+    await page.getByRole("button", { name: "Media", exact: true }).first().click().catch(() => undefined); await snap("07c-editor-media-sheet");
+    await page.locator(".sheet-x").first().click().catch(() => undefined);
+  }
   await go("settings", "#/app/settings", "08-settings", "main");
   await page.locator(".nav-toggle").click().catch(() => undefined); await snap("08b-workspace-menu-open");
   await page.keyboard.press("Escape"); await page.waitForTimeout(400);
@@ -79,6 +87,7 @@ for (const [name, W, H] of SIZES) {
   const af = page.frames().find((f) => f !== page.mainFrame());
   if (af) {
     await af.getByRole("button", { name: /Skip tour/ }).click().catch(() => undefined); await page.waitForTimeout(300); await snap("09c-assistant-no-tour");
+    for (const sel of ['button[aria-label="Send"]', 'button[aria-label="Attach files"]']) { const b = await af.locator(sel).first().boundingBox(); if (!b || b.y + b.height > H - 1) { bad++; console.log(`  FAIL assistant: ${sel} not fully visible`, JSON.stringify(b)); } }
     await af.locator(".menu-btn").click().catch(() => undefined); await page.waitForTimeout(400); await snap("09d-assistant-menu-open");
     await af.locator(".side-scrim").click({ position: { x: 360, y: 400 } }).catch(() => undefined); await page.waitForTimeout(400);
     for (const t of ["Create", "Files", "Tools", "Settings"]) {

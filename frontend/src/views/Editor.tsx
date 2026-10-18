@@ -39,10 +39,19 @@ export default function Editor({ queue, onQueueDone, visible }: { queue: Asset[]
   const [rendered, setRendered] = useState<string | null>(null);
   const [previewJob, setPreviewJob] = useState<string | null>(null);
   const dirty = useRef(false);
-  const [panelOpen, setPanelOpen] = useState(() => typeof window === "undefined" || window.innerWidth >= 1200);
+  // Phone: a CapCut-style layout. The player, timeline and a tool bar fill the screen; Library and Details open as bottom sheets.
+  const [phone, setPhone] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(max-width: 760px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.("(max-width: 760px)"); if (!mq) return;
+    const on = () => { setPhone(mq.matches); if (mq.matches) { setLibOpen(false); setPanelOpen(false); } };
+    mq.addEventListener("change", on); return () => mq.removeEventListener("change", on);
+  }, []);
+  const [panelOpen, setPanelOpen] = useState(() => typeof window === "undefined" || (window.innerWidth >= 1200 && !window.matchMedia?.("(max-width: 760px)").matches));
   const [tab, setTab] = useState<"settings" | "history">("settings");
   const [libTab, setLibTab] = useState<LibTab>("media");
-  const [libOpen, setLibOpen] = useState(true);
+  const [libOpen, setLibOpen] = useState(() => typeof window === "undefined" || !window.matchMedia?.("(max-width: 760px)").matches);
+  const openSheet = (t: LibTab) => { setPanelOpen(false); setLibTab(t); setLibOpen(true); };
+  const closeSheets = () => { setLibOpen(false); setPanelOpen(false); };
   const [picking, setPicking] = useState<false | "timeline" | "layer">(false);
   const [showKeys, setShowKeys] = useState(false);
   const tlEl = useRef<HTMLDivElement | null>(null);
@@ -330,17 +339,18 @@ export default function Editor({ queue, onQueueDone, visible }: { queue: Asset[]
         <Button variant="ghost" small icon={I.undo} label="Undo (Ctrl+Z)" disabled={!h.canUndo} onClick={h.undo} />
         <Button variant="ghost" small icon={I.redo} label="Redo (Ctrl+Y)" disabled={!h.canRedo} onClick={h.redo} />
         <Button variant="ghost" small icon={I.folder} onClick={openProjects}>Projects</Button>
-        <Button variant="ghost" small active={libOpen} aria-pressed={libOpen} onClick={() => setLibOpen((v) => !v)}>Library</Button>
-        <Button variant="ghost" small active={panelOpen} aria-pressed={panelOpen} onClick={() => setPanelOpen((v) => !v)}>Details</Button>
+        <Button className="phone-hide" variant="ghost" small active={libOpen} aria-pressed={libOpen} onClick={() => setLibOpen((v) => !v)}>Library</Button>
+        <Button className="phone-hide" variant="ghost" small active={panelOpen} aria-pressed={panelOpen} onClick={() => setPanelOpen((v) => !v)}>Details</Button>
         <Button variant="secondary" small icon={I.wand} onClick={renderPreview} busy={!!pj} disabled={project.clips.length === 0}>Render preview</Button>
         <Button className="fx-done" small icon={I.download} onClick={() => setExporting(true)} disabled={project.clips.length === 0}>Export</Button>
       </header>
 
       {missing > 0 && <p className="banner" role="alert"><Icon d={I.alert} size={14} /> {missing} item{missing > 1 ? "s" : ""} on the timeline use files that were deleted from the Library. Remove them before exporting.</p>}
 
+      {phone && (libOpen || panelOpen) && <button type="button" className="sheet-scrim" aria-label="Close the panel" onClick={closeSheets} />}
       <div className={`fx-main${panelOpen ? "" : " fx-main--noright"}${libOpen ? "" : " fx-main--noleft"}`}>
         {libOpen && (
-          <LibraryPanel tab={libTab} onTab={setLibTab} assets={assets} onAdd={addAsset} onLayer={addLayer} onUpload={(f) => void dropFiles(f)}
+          <LibraryPanel tab={libTab} onTab={setLibTab} assets={assets} onAdd={(a) => { addAsset(a); if (phone) closeSheets(); }} onLayer={(a) => { addLayer(a); if (phone) closeSheets(); }} onUpload={(f) => void dropFiles(f)} onClose={phone ? closeSheets : undefined}
             audioPanel={
               <SoundsPanel onAdd={async (a, s) => {
                 await refreshAssets();
@@ -349,7 +359,7 @@ export default function Editor({ queue, onQueueDone, visible }: { queue: Asset[]
                 commit((p) => ({ ...p, audio: [...p.audio, newAudio(a, at, { volume: ambient ? 0.5 : 1, loop: ambient, is_music: ambient, fade_in: ambient ? 0.5 : 0, fade_out: ambient ? 1 : 0 })] }));
                 toast(`Added “${s.label}” at ${at.toFixed(1)} s.`);
               }} />}
-            onText={addText} target={targetName}
+            onText={(st) => { addText(st); if (phone) closeSheets(); }} target={targetName}
             currentLook={tLayer?.preset ?? tClip?.preset ?? "none"} currentEffects={(tLayer?.effects ?? tClip?.effects ?? []).map((e) => e.type)} currentTransition={tClip?.transition.type ?? "none"}
             onLook={applyLook} onEffect={applyEffect} onTransition={applyTransition} />
         )}
@@ -400,13 +410,21 @@ export default function Editor({ queue, onQueueDone, visible }: { queue: Asset[]
             <span className="mono text-sm" aria-live="off">{fmtTime(total)}</span>
           </div>
           <div className="fx-tools" role="toolbar" aria-label="Editor tools">
+            <Button className="phone-only" variant="ghost" small icon={I.film} active={libOpen && libTab === "media"} onClick={() => openSheet("media")}>Media</Button>
+            <Button className="phone-only" variant="ghost" small icon={I.music ?? I.play} active={libOpen && libTab === "audio"} onClick={() => openSheet("audio")}>Audio</Button>
+            <Button className="phone-only" variant="ghost" small icon={I.text} active={libOpen && libTab === "text"} onClick={() => openSheet("text")}>Text</Button>
+            <Button className="phone-only" variant="ghost" small icon={I.wand} active={libOpen && libTab === "filters"} onClick={() => openSheet("filters")}>Filters</Button>
+            <Button className="phone-only" variant="ghost" small icon={I.sparkle} active={libOpen && libTab === "effects"} onClick={() => openSheet("effects")}>Effects</Button>
+            <Button className="phone-only" variant="ghost" small icon={I.skipBack} active={libOpen && libTab === "transitions"} onClick={() => openSheet("transitions")}>Transitions</Button>
+            <Button className="phone-only" variant="ghost" small icon={I.gear} onClick={() => { setLibOpen(false); setPanelOpen(true); }}>Details</Button>
+            <span className="vr phone-only" />
             <Button variant="ghost" small icon={I.scissors} onClick={split} label="Split at playhead (S)">Split</Button>
             <Button variant="ghost" small icon={I.dup} onClick={duplicate} disabled={!sel} label="Make a copy of the selected block">Copy</Button>
             <Button variant="ghost" small icon={I.trash} onClick={remove} disabled={!sel}>Delete</Button>
             <span className="vr" />
-            <Button variant="ghost" small icon={I.text} onClick={() => addText()} label="Add a title or caption at the playhead">Text</Button>
+            <Button className="phone-hide" variant="ghost" small icon={I.text} onClick={() => addText()} label="Add a title or caption at the playhead">Text</Button>
             <Button variant="ghost" small icon={I.wand} active={drawing} onClick={() => { setDrawing((d) => !d); setPlaying(false); }}>Draw</Button>
-            <Button variant="ghost" small icon={I.plus} onClick={() => setPicking("timeline")} label="Add a video, picture or song to the main video">Media</Button>
+            <Button className="phone-hide" variant="ghost" small icon={I.plus} onClick={() => setPicking("timeline")} label="Add a video, picture or song to the main video">Media</Button>
             <Button variant="ghost" small icon={I.film} label="Add a second video or picture that plays at the same time (L)" onClick={() => setPicking("layer")}>Layer</Button>
             <Button variant="ghost" small label="Remember where the selected layer, text or picture is right now (K)" disabled={!sel || !["layer", "text", "image"].includes(sel.type)} onClick={addKeyframe}>◆ Key</Button>
             <span className="vr" />
@@ -419,6 +437,7 @@ export default function Editor({ queue, onQueueDone, visible }: { queue: Asset[]
 
         {panelOpen && (
           <aside className="fx-panel" aria-label="Side panel">
+            {phone && <button type="button" className="sheet-x" aria-label="Close" onClick={closeSheets}>✕</button>}
             <Tabs label="Panel" value={tab} onChange={setTab} options={[{ id: "settings", label: "Details" }, { id: "history", label: "History" }]} />
             {tab === "settings" && (
               <div className="ed-inspector stack gap">

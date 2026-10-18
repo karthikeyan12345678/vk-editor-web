@@ -16,6 +16,8 @@ interface Props {
   tab: LibTab; onTab: (t: LibTab) => void;
   assets: Asset[]; onAdd: (a: Asset) => void; onLayer: (a: Asset) => void; onUpload: (f: FileList) => void;
   audioPanel: ReactNode;
+  /** Phone: the library is a bottom sheet; this closes it. */
+  onClose?: () => void;
   onText: (s?: TextStyle) => void;
   /** What a look/effect/transition would change right now, e.g. "Clip 2". Null when nothing can be changed. */
   target: string | null;
@@ -57,6 +59,7 @@ export default function LibraryPanel(p: Props) {
           </button>
         ))}
       </div>
+      {p.onClose && <button type="button" className="sheet-x" aria-label="Close" onClick={p.onClose}>✕</button>}
       <div className="lib-body" role="tabpanel">
         {p.tab === "media" && (
           <div className="stack gap">

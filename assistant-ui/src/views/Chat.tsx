@@ -125,7 +125,7 @@ export default function Chat({ conversationId, onConversation, onTitle, goSettin
             <button className="chip-x" aria-label={`Remove ${f.name}`} onClick={() => setFiles(files.filter((x) => x.id !== f.id))}><Ico name="x" size={12} /></button></span>))}</div>}
         <div className="composer">
           <input ref={fileInput} type="file" hidden multiple onChange={(e) => void attach(e.target.files)} />
-          <textarea ref={area} className="composer-input" rows={1} value={text} placeholder="Message, or type / for a command like /pdf or /ppt"
+          <textarea ref={area} className="composer-input" rows={1} value={text} placeholder="Message, or type / for a command"
             aria-label="Message" onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(200, e.target.scrollHeight) + "px"; }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
           <div className="composer-row">

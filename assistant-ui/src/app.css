@@ -222,6 +222,17 @@ h1 { font-family: var(--font-serif); }
 .row.between { justify-content: space-between; flex-wrap: wrap; }
 .btn { max-width: 100%; }
 
-/* phone: header rows may wrap instead of pushing buttons off the card */
-.row.between { justify-content: space-between; flex-wrap: wrap; }
-.btn { max-width: 100%; }
+/* phone: the message box always stays on screen, with the + and Send buttons visible */
+html, body, #root { height: 100%; overflow: hidden; }
+.chat { overflow: hidden; }
+.composer-wrap { flex: none; padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom)); }
+.composer-input { font-size: 16px; }
+.composer-row { min-height: 40px; }
+.round { width: 40px; height: 40px; flex: none; }
+@media (max-width: 860px) {
+  .welcome { margin-top: 3vh; }
+  .welcome h1 { font-size: 30px; line-height: 38px; }
+  .composer-wrap .hint { display: none; }
+  .messages { padding: var(--space-4) var(--space-3) var(--space-3); }
+}
+@media (max-height: 640px) { .welcome-mark { display: none; } .welcome { margin-top: 0; } }
